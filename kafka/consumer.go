@@ -2,10 +2,12 @@ package kafka
 
 import (
 	"context"
+	"encoding/binary"
 	"log"
 	"strings"
 
 	"github.com/Shopify/sarama"
+	"github.com/linkedin/goavro/v2"
 	"github.com/pkg/errors"
 )
 
@@ -22,11 +24,21 @@ type kafkaConsumer struct {
 	ctx  context.Context
 	conf Config
 
-	consumer sarama.ConsumerGroup
-	handler  Handler
-	errors   chan error
+	consumer             sarama.ConsumerGroup
+	SchemaRegistryClient *CachedSchemaRegistryClient
+	handler              Handler
+	errors               chan error
 
 	logger *log.Logger
+}
+
+type Message struct {
+	SchemaId  int
+	Topic     string
+	Partition int32
+	Offset    int64
+	Key       string
+	Value     string
 }
 
 // caller should cancel the supplied context when a graceful consumer shutdown is desired
@@ -51,13 +63,18 @@ func NewConsumer(ctx context.Context, conf Config, handler Handler, logger *log.
 		return nil, errors.Wrapf(err, "error creating consumer group message handler")
 	}
 
+	// config should have a CSV list of brokers
+	schemaRegistryServers := strings.Split(conf.SchemaRegistryServers, ",")
+	schemaRegistryClient := NewCachedSchemaRegistryClient(schemaRegistryServers)
+
 	return &kafkaConsumer{
-		ctx:      ctx,
-		conf:     conf,
-		consumer: consumer,
-		handler:  handler,
-		errors:   make(chan error, errorQueueSize),
-		logger:   logger,
+		ctx:                  ctx,
+		conf:                 conf,
+		consumer:             consumer,
+		SchemaRegistryClient: schemaRegistryClient,
+		handler:              handler,
+		errors:               make(chan error, errorQueueSize),
+		logger:               logger,
 	}, nil
 }
 
@@ -115,7 +132,8 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 	// consume each partitions' messages async and pass to supplied handler. Messages() closed for us on shutdown
 	for msg := range claim.Messages() {
 		saramaMsg := (*ConsumerMessage)(msg)
-		if err := kc.handler.Message(saramaMsg); err != nil {
+		message, _ := kc.ProcessAvroMsg(saramaMsg)
+		if err := kc.handler.Handle(message); err != nil {
 			return err
 		}
 
@@ -124,4 +142,35 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 	}
 
 	return nil
+}
+
+func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
+	schemaId := binary.BigEndian.Uint32(m.Value[1:5])
+	codec, err := ac.GetSchema(int(schemaId))
+	if err != nil {
+		return &Message{}, err
+	}
+	// Convert binary Avro data back to native Go form
+	native, _, err := codec.NativeFromBinary(m.Value[5:])
+	if err != nil {
+		return &Message{}, err
+	}
+
+	// Convert native Go form to textual Avro data
+	textual, err := codec.TextualFromNative(nil, native)
+
+	if err != nil {
+		return &Message{}, err
+	}
+	msg := Message{int(schemaId), m.Topic, m.Partition, m.Offset, string(m.Key), string(textual)}
+	return &msg, nil
+}
+
+//GetSchemaId get schema id from schema-registry service
+func (ac *kafkaConsumer) GetSchema(id int) (*goavro.Codec, error) {
+	codec, err := ac.SchemaRegistryClient.GetSchema(id)
+	if err != nil {
+		return nil, err
+	}
+	return codec, nil
 }

@@ -16,6 +16,7 @@ func init() {
 
 	// apply minimal config only for example run
 	flag.StringVar(&conf.Brokers, "brokers", "localhost:9092", "CSV list of Kafka seed brokers to request group membership from")
+	flag.StringVar(&conf.SchemaRegistryServers, "schemaregistry", "http://localhost:8081", "CSV list of schema registry server")
 	flag.StringVar(&conf.Topics, "topics", "example", "CSV list of Kafka topics to consume")
 	flag.StringVar(&conf.Group, "group", "example", "Kafka consumer group to join")
 	flag.BoolVar(&conf.Verbose, "verbose", false, "Log detailed Kafka client internals?")
@@ -68,7 +69,7 @@ type exampleHandler struct {
 
 // implements kafka.Handler - errors returned here will be treated as fatal
 // and will trigger graceful shutdown of the kafka.Consumer
-func (eh *exampleHandler) Message(msg *kafka.ConsumerMessage) error {
+func (eh *exampleHandler) Handle(msg *kafka.Message) error {
 	key := string(msg.Key)
 	value := string(msg.Value)
 	topic := msg.Topic

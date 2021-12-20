@@ -34,6 +34,9 @@ type Config struct {
 
 	// Producer specific parameters
 	FlushInterval time.Duration `envconfig:"KAFKA_FLUSH_INTERVAL"`
+
+	// Schema Registry server
+	SchemaRegistryServers string `envconfig:"KAFKA_SCHEMA_REGISTRY_SERVERS"`
 }
 
 // returns a new kafka.Config with reasonable defaults for some values
