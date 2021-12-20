@@ -131,6 +131,9 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 
 	// consume each partitions' messages async and pass to supplied handler. Messages() closed for us on shutdown
 	for msg := range claim.Messages() {
+		log.Printf("Value: %s", string(msg.Value))
+		log.Printf("Key: %s", string(msg.Key))
+
 		saramaMsg := (*ConsumerMessage)(msg)
 		message, _ := kc.ProcessAvroMsg(saramaMsg)
 		if err := kc.handler.Handle(message); err != nil {
@@ -146,13 +149,16 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 
 func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
 	schemaId := binary.BigEndian.Uint32(m.Value[1:5])
+	log.Printf("SchemaID: %d", schemaId)
 	codec, err := ac.GetSchema(int(schemaId))
 	if err != nil {
+		log.Printf("Error: %s", err)
 		return &Message{}, err
 	}
 	// Convert binary Avro data back to native Go form
 	native, _, err := codec.NativeFromBinary(m.Value[5:])
 	if err != nil {
+		log.Printf("Error: %s", err)
 		return &Message{}, err
 	}
 
@@ -160,9 +166,11 @@ func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
 	textual, err := codec.TextualFromNative(nil, native)
 
 	if err != nil {
+		log.Printf("Error: %s", err)
 		return &Message{}, err
 	}
 	msg := Message{int(schemaId), m.Topic, m.Partition, m.Offset, string(m.Key), string(textual)}
+	log.Printf("message: %x", msg)
 	return &msg, nil
 }
 
