@@ -131,9 +131,6 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 
 	// consume each partitions' messages async and pass to supplied handler. Messages() closed for us on shutdown
 	for msg := range claim.Messages() {
-		log.Printf("Value: %s", string(msg.Value))
-		log.Printf("Key: %s", string(msg.Key))
-
 		saramaMsg := (*ConsumerMessage)(msg)
 		message, _ := kc.ProcessAvroMsg(saramaMsg)
 		if err := kc.handler.Handle(message); err != nil {
@@ -170,7 +167,6 @@ func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
 		return &Message{}, err
 	}
 	msg := Message{int(schemaId), m.Topic, m.Partition, m.Offset, string(m.Key), string(textual)}
-	log.Printf("message: %x", msg)
 	return &msg, nil
 }
 
