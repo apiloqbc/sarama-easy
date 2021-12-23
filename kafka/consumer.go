@@ -33,12 +33,13 @@ type kafkaConsumer struct {
 }
 
 type Message struct {
-	SchemaId  int
-	Topic     string
-	Partition int32
-	Offset    int64
-	Key       string
-	Value     string
+	SchemaId            int
+	Topic               string
+	Partition           int32
+	Offset              int64
+	Key                 string
+	Value               string
+	HighWaterMarkOffset int64
 }
 
 // caller should cancel the supplied context when a graceful consumer shutdown is desired
@@ -133,6 +134,8 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 	for msg := range claim.Messages() {
 		saramaMsg := (*ConsumerMessage)(msg)
 		message, _ := kc.ProcessAvroMsg(saramaMsg)
+
+		message.HighWaterMarkOffset = claim.HighWaterMarkOffset()
 		if err := kc.handler.Handle(message); err != nil {
 			return err
 		}
@@ -166,7 +169,13 @@ func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
 		log.Printf("Error: %s", err)
 		return &Message{}, err
 	}
-	msg := Message{int(schemaId), m.Topic, m.Partition, m.Offset, string(m.Key), string(textual)}
+	msg := Message{
+		SchemaId:  int(schemaId),
+		Topic:     m.Topic,
+		Partition: m.Partition,
+		Offset:    m.Offset,
+		Key:       string(m.Key),
+		Value:     string(textual)}
 	return &msg, nil
 }
 
