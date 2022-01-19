@@ -89,13 +89,22 @@ func configureConsumer(envConf Config) (*sarama.Config, error) {
 	}
 
 	// configure group rebalance strategy
+	switch envConf.RebalanceStrategy {
+	case "roundrobin":
+		saramaConf.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRoundRobin
+	case "range":
+		saramaConf.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
+	default:
+		return nil, errors.Errorf("unrecognized consumer group partition strategy: %s", envConf.RebalanceStrategy)
+	}
+	// configure group rebalance strategy
 	switch envConf.IsolationLevel {
 	case "ReadUncommitted":
 		saramaConf.Consumer.IsolationLevel = sarama.ReadCommitted
 	case "ReadCommitted":
 		saramaConf.Consumer.IsolationLevel = sarama.ReadUncommitted
 	default:
-		return nil, errors.Errorf("unrecognized consumer group partition strategy: %s", envConf.RebalanceStrategy)
+		saramaConf.Consumer.IsolationLevel = sarama.ReadUncommitted
 	}
 
 	// conf init offsets default: only honored if brokers on Kafka side have no pre-stored offsets for group
