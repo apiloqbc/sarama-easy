@@ -148,6 +148,15 @@ func (kc *kafkaConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim
 }
 
 func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
+	if m.Value == nil {
+		return &Message{
+			SchemaId:  int(-1),
+			Topic:     m.Topic,
+			Partition: m.Partition,
+			Offset:    m.Offset,
+			Key:       string(m.Key),
+			Value:     string("")}, nil
+	}
 	schemaId := binary.BigEndian.Uint32(m.Value[1:5])
 	log.Printf("SchemaID: %d", schemaId)
 	codec, err := ac.GetSchema(int(schemaId))
