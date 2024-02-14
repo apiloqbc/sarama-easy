@@ -6,8 +6,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/Shopify/sarama"
-	from_env "github.com/kelseyhightower/envconfig"
+	"github.com/IBM/sarama"
 	"github.com/pkg/errors"
 )
 
@@ -54,14 +53,6 @@ func NewKafkaConfig() Config {
 		CommitInterval:    10 * time.Second,
 		FlushInterval:     1 * time.Second,
 	}
-}
-
-// hydrate kafka.Config using environment variables
-func FromEnv() (Config, error) {
-	var conf Config
-	err := from_env.Process("", &conf)
-
-	return conf, err
 }
 
 const errorQueueSize = 32

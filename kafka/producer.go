@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/pkg/errors"
 )
 
