@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	github.com/IBM/sarama v1.42.2
-	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/linkedin/goavro/v2 v2.12.0
 	github.com/pkg/errors v0.9.1
 )
