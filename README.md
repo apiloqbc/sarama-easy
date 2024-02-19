@@ -1,6 +1,6 @@
 # sarama-easy
 
-[Sarama](https://github.com/Shopify/sarama) is a Golang client for Apache Kafka. This is a light wrapper and example demo for Sarama's async producer and consumer (including auto-rebalancing consumer groups.)
+[Sarama](https://github.com/IBM/sarama) is a Golang client for Apache Kafka. This is a light wrapper and example demo for Sarama's async producer and consumer (including auto-rebalancing consumer groups.)
 
 ## Usage
 

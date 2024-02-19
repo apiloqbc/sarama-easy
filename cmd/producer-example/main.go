@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/Shopify/sarama"
+	"github.com/IBM/sarama"
 	"github.com/apiloqbc/sarama-easy/kafka"
 	"github.com/linkedin/goavro/v2"
 	"log"
