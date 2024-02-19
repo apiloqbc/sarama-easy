@@ -1,11 +1,12 @@
 module github.com/apiloqbc/sarama-easy
 
-go 1.18
+go 1.17
 
 require (
 	github.com/IBM/sarama v1.42.2
-	github.com/linkedin/goavro/v2 v2.12.0
-	github.com/pkg/errors v0.9.1
+	github.com/kelseyhightower/envconfig v1.4.0
+	github.com/linkedin/goavro/v2 v2.10.1
+	github.com/pkg/errors v0.8.1
 )
 
 require (
