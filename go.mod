@@ -7,4 +7,6 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/linkedin/goavro/v2 v2.10.1
 	github.com/pkg/errors v0.8.1
+	github.com/xdg/scram v1.0.5
+	github.com/xdg/stringprep v1.0.3 // indirect
 )

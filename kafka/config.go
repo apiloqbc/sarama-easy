@@ -6,14 +6,20 @@ import (
 	"io/ioutil"
 	"time"
 
+	"crypto/sha256"
+	"crypto/sha512"
 	"github.com/Shopify/sarama"
 	from_env "github.com/kelseyhightower/envconfig"
 	"github.com/pkg/errors"
+	"github.com/xdg/scram"
 )
 
 // simple Kafka config abstraction; can be populated from env vars
 // via FromEnv() or fields can applied to CLI flags by the caller.
 type Config struct {
+	Username string `envconfig:"KAFKA_USERNAME"`
+	Password string `envconfig:"KAFKA_PASSWORD"`
+
 	Brokers  string `envconfig:"KAFKA_BROKERS"`
 	Version  string `envconfig:"KAFKA_VERSION"`
 	Verbose  bool   `envconfig:"KAFKA_VERBOSE"`
@@ -39,6 +45,9 @@ type Config struct {
 	SchemaRegistryServers string `envconfig:"KAFKA_SCHEMA_REGISTRY_SERVERS"`
 
 	IsolationLevel string `envconfig:"KAFKA_ISOLATION_LEVEL"`
+
+	SaslMechanism string `envconfig:"KAFKA_SASL_MECHANISM"`
+	SaslEnabled   bool   `envconfig:"KAFKA_SASL_ENABLED"`
 }
 
 // returns a new kafka.Config with reasonable defaults for some values
@@ -69,6 +78,8 @@ const errorQueueSize = 32
 // apply env config properties to a Sarama consumer config
 func configureConsumer(envConf Config) (*sarama.Config, error) {
 	saramaConf := sarama.NewConfig()
+	saramaConf.Net.TLS.Enable = envConf.TLSEnabled
+	configureSasl(envConf, saramaConf)
 
 	// Kafka broker version is mandatory for API compatability
 	version, err := sarama.ParseKafkaVersion(envConf.Version)
@@ -120,9 +131,65 @@ func configureConsumer(envConf Config) (*sarama.Config, error) {
 	return saramaConf, nil
 }
 
+func configureSasl(envConf Config, saramaConf *sarama.Config) {
+	if envConf.SaslEnabled {
+		saramaConf.Net.SASL.Enable = envConf.SaslEnabled
+		saramaConf.Net.SASL.Mechanism = sarama.SASLMechanism(envConf.SaslMechanism)
+		saramaConf.Net.SASL.User = envConf.Username
+		saramaConf.Net.SASL.Password = envConf.Password
+		saramaConf.Net.SASL.Enable = envConf.SaslEnabled
+		if envConf.SaslMechanism == sarama.SASLTypeSCRAMSHA256 {
+			saramaConf.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
+				return &XDGSCRAMClient{HashGeneratorFcn: SHA256}
+			}
+		} else if envConf.SaslMechanism == sarama.SASLTypeSCRAMSHA512 {
+			saramaConf.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
+				return &XDGSCRAMClient{HashGeneratorFcn: SHA512}
+			}
+		}
+	}
+}
+
+var (
+	// SHA256 SASLMechanism
+	SHA256 scram.HashGeneratorFcn = sha256.New
+	// SHA512 SASLMechanism
+	SHA512 scram.HashGeneratorFcn = sha512.New
+)
+
+// XDGSCRAMClient for SASL-Protocol
+type XDGSCRAMClient struct {
+	*scram.Client
+	*scram.ClientConversation
+	scram.HashGeneratorFcn
+}
+
+// Begin of XDGSCRAMClient
+func (x *XDGSCRAMClient) Begin(userName, password, authzID string) (err error) {
+	x.Client, err = x.HashGeneratorFcn.NewClient(userName, password, authzID)
+	if err != nil {
+		return err
+	}
+	x.ClientConversation = x.Client.NewConversation()
+	return nil
+}
+
+// Step of XDGSCRAMClient
+func (x *XDGSCRAMClient) Step(challenge string) (response string, err error) {
+	response, err = x.ClientConversation.Step(challenge)
+	return
+}
+
+// Done of XDGSCRAMClient
+func (x *XDGSCRAMClient) Done() bool {
+	return x.ClientConversation.Done()
+}
+
 // apply env config properties into a Sarama producer config
 func configureProducer(envConf Config) (*sarama.Config, error) {
 	saramaConf := sarama.NewConfig()
+	saramaConf.Net.TLS.Enable = envConf.TLSEnabled
+	configureSasl(envConf, saramaConf)
 
 	version, err := sarama.ParseKafkaVersion(envConf.Version)
 	if err != nil {
@@ -148,7 +215,7 @@ func configureProducer(envConf Config) (*sarama.Config, error) {
 // side effect TLS setup into Sarama config if env config specifies to do so
 func configureTLS(envConf Config, saramaConf *sarama.Config) error {
 	// configure TLS
-	if envConf.TLSEnabled {
+	if envConf.CACerts != "" {
 		cert, err := tls.LoadX509KeyPair(envConf.TLSCert, envConf.TLSKey)
 		if err != nil {
 			return errors.Wrapf(err, "failed to load TLS cert(%s) and key(%s)", envConf.TLSCert, envConf.TLSKey)
@@ -167,7 +234,6 @@ func configureTLS(envConf Config, saramaConf *sarama.Config) error {
 			RootCAs:      pool,
 		}
 
-		saramaConf.Net.TLS.Enable = true
 		saramaConf.Net.TLS.Config = tlsCfg
 	}
 
