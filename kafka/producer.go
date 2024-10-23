@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/IBM/sarama"
+	"github.com/Shopify/sarama"
 	"github.com/pkg/errors"
 )
 
@@ -170,7 +170,7 @@ func (a *AvroEncoder) Length() int {
 	return 5 + len(a.Content)
 }
 
-//GetSchemaId get schema id from schema-registry service
+// GetSchemaId get schema id from schema-registry service
 func (ap *kafkaProducer) GetSchemaId(topic string, avroCodec *goavro.Codec) (int, error) {
 	schemaId, err := ap.SchemaRegistryClient.CreateSubject(topic+"-value", avroCodec)
 	if err != nil {
