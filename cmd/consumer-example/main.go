@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/kelseyhightower/envconfig"
 	"log"
 	"os"
 
@@ -12,15 +13,51 @@ import (
 var conf kafka.Config
 
 func init() {
+	// Initialize the Kafka configuration
 	conf = kafka.NewKafkaConfig()
 
-	// apply minimal config only for example run
-	flag.StringVar(&conf.Brokers, "brokers", "localhost:9092", "CSV list of Kafka seed brokers to request group membership from")
-	flag.StringVar(&conf.SchemaRegistryServers, "schemaregistry", "http://localhost:8081", "CSV list of schema registry server")
-	flag.StringVar(&conf.Topics, "topics", "example", "CSV list of Kafka topics to consume")
-	flag.StringVar(&conf.Group, "group", "example", "Kafka consumer group to join")
-	flag.BoolVar(&conf.Verbose, "verbose", false, "Log detailed Kafka client internals?")
-	flag.StringVar(&conf.InitOffsets, "offsets", "earliest", "Kafka group rebalance strategy")
+	// Process environment variables to populate the config struct
+	err := envconfig.Process("", &conf)
+	if err != nil {
+		log.Fatal("Error reading environment variables: ", err.Error())
+	}
+
+	flag.StringVar(&conf.Topics, "topics", "mytopic", "CSV list of Kafka topics to consume")
+
+	// Override configuration values with command-line flags if provided
+	flag.StringVar(&conf.Brokers, "brokers", conf.Brokers, "CSV list of Kafka seed brokers")
+	flag.StringVar(&conf.Username, "username", conf.Username, "Kafka Username")
+	flag.StringVar(&conf.Password, "password", conf.Password, "Kafka Password")
+	flag.StringVar(&conf.ClientID, "clientid", conf.ClientID, "Kafka Client ID")
+	flag.StringVar(&conf.Version, "version", conf.Version, "Kafka Version")
+	flag.BoolVar(&conf.Verbose, "verbose", conf.Verbose, "Log detailed Kafka client internals?")
+	flag.BoolVar(&conf.TLSEnabled, "tlsenabled", conf.TLSEnabled, "TLS enabled")
+	flag.StringVar(&conf.TLSKey, "tlskey", conf.TLSKey, "TLS key file")
+	flag.StringVar(&conf.TLSCert, "tlscert", conf.TLSCert, "TLS cert file")
+	flag.StringVar(&conf.CACerts, "cacerts", conf.CACerts, "CA certificates")
+
+	// Consumer specific flags
+	flag.StringVar(&conf.Group, "group", conf.Group, "Consumer group ID")
+	flag.StringVar(&conf.RebalanceStrategy, "rebalancestrategy", conf.RebalanceStrategy, "Consumer rebalance strategy")
+	flag.DurationVar(&conf.RebalanceTimeout, "rebalancetimeout", conf.RebalanceTimeout, "Consumer rebalance timeout")
+	flag.StringVar(&conf.InitOffsets, "initoffsets", conf.InitOffsets, "Consumer initial offsets")
+	flag.DurationVar(&conf.CommitInterval, "commitinterval", conf.CommitInterval, "Consumer commit interval")
+
+	// Producer specific flags
+	flag.DurationVar(&conf.FlushInterval, "flushinterval", conf.FlushInterval, "Producer flush interval")
+
+	// Schema Registry flags
+	flag.StringVar(&conf.SchemaRegistryServers, "schemaregistryservers", conf.SchemaRegistryServers, "Schema Registry Servers")
+
+	// Security and SASL flags
+	flag.StringVar(&conf.SaslMechanism, "saslmechanism", conf.SaslMechanism, "SASL Mechanism")
+	flag.BoolVar(&conf.SaslEnabled, "saslEnabled", conf.SaslEnabled, "SASL enabled")
+
+	// Parse the command-line flags
+	flag.Parse()
+
+	// Log the final configuration for verification
+	log.Printf("Config: %+v\n", conf)
 }
 
 func main() {

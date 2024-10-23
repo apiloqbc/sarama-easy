@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"flag"
-	"github.com/IBM/sarama"
+	"fmt"
 	"github.com/apiloqbc/sarama-easy/kafka"
-	"github.com/linkedin/goavro/v2"
+	"github.com/kelseyhightower/envconfig"
 	"log"
 	"os"
 	"sync"
@@ -18,29 +18,55 @@ var (
 )
 
 func init() {
+	// Initialize the Kafka configuration
 	conf = kafka.NewKafkaConfig()
 
-	// apply minimal config only for example run
-	flag.StringVar(&conf.Brokers, "brokers", "localhost:9092", "CSV list of Kafka seed brokers to produce events to")
-	flag.StringVar(&conf.SchemaRegistryServers, "schemaregistry", "http://localhost:8081", "CSV list of schema registry server")
-	flag.StringVar(&topic, "topic", "example", "CSV list of Kafka topic to produce to")
-	flag.BoolVar(&conf.Verbose, "verbose", false, "Log detailed Kafka client internals?")
-	flag.IntVar(&count, "count", 10, "number of example messages to produce")
+	// Process environment variables to populate the config struct
+	err := envconfig.Process("", &conf)
+	if err != nil {
+		log.Fatal("Error reading environment variables: ", err.Error())
+	}
+
+	// Override configuration values with command-line flags if provided
+	flag.StringVar(&conf.Brokers, "brokers", conf.Brokers, "CSV list of Kafka seed brokers")
+	flag.StringVar(&conf.Topics, "topics", conf.Topics, "CSV list of Kafka topics to consume")
+	flag.StringVar(&conf.Username, "username", conf.Username, "Kafka Username")
+	flag.StringVar(&conf.Password, "password", conf.Password, "Kafka Password")
+	flag.StringVar(&conf.ClientID, "clientid", conf.ClientID, "Kafka Client ID")
+	flag.StringVar(&conf.Version, "version", conf.Version, "Kafka Version")
+	flag.BoolVar(&conf.Verbose, "verbose", conf.Verbose, "Log detailed Kafka client internals?")
+	flag.BoolVar(&conf.TLSEnabled, "tlsenabled", conf.TLSEnabled, "TLS enabled")
+	flag.StringVar(&conf.TLSKey, "tlskey", conf.TLSKey, "TLS key file")
+	flag.StringVar(&conf.TLSCert, "tlscert", conf.TLSCert, "TLS cert file")
+	flag.StringVar(&conf.CACerts, "cacerts", conf.CACerts, "CA certificates")
+
+	// Consumer specific flags
+	flag.StringVar(&conf.Group, "group", conf.Group, "Consumer group ID")
+	flag.StringVar(&conf.RebalanceStrategy, "rebalancestrategy", conf.RebalanceStrategy, "Consumer rebalance strategy")
+	flag.DurationVar(&conf.RebalanceTimeout, "rebalancetimeout", conf.RebalanceTimeout, "Consumer rebalance timeout")
+	flag.StringVar(&conf.InitOffsets, "initoffsets", conf.InitOffsets, "Consumer initial offsets")
+	flag.DurationVar(&conf.CommitInterval, "commitinterval", conf.CommitInterval, "Consumer commit interval")
+
+	// Producer specific flags
+	flag.DurationVar(&conf.FlushInterval, "flushinterval", conf.FlushInterval, "Producer flush interval")
+
+	// Schema Registry flags
+	flag.StringVar(&conf.SchemaRegistryServers, "schemaregistryservers", conf.SchemaRegistryServers, "Schema Registry Servers")
+
+	// Security and SASL flags
+	flag.StringVar(&conf.SaslMechanism, "saslmechanism", conf.SaslMechanism, "SASL Mechanism")
+	flag.BoolVar(&conf.SaslEnabled, "saslEnabled", conf.SaslEnabled, "SASL enabled")
+
+	flag.IntVar(&count, "count", 10, "Number of example messages to produce")
+
+	// Parse the command-line flags
+	flag.Parse()
+
+	// Log the final configuration for verification
+	log.Printf("Config: %+v\n", conf)
 }
 
 func main() {
-	//Sample Data
-	user := &User{
-		FirstName: "John",
-		LastName:  "Snow",
-		Address: &Address{
-			Address1: "1106 Pennsylvania Avenue",
-			City:     "Wilmington",
-			State:    "DE",
-			Zip:      19806,
-		},
-	}
-
 	flag.Parse()
 
 	logger := log.New(os.Stdout, "[example Kafka producer] ", log.LstdFlags|log.LUTC|log.Lshortfile)
@@ -48,7 +74,6 @@ func main() {
 	ctx, cancelable := context.WithCancel(context.Background())
 
 	producer, err := kafka.NewProducer(ctx, conf, logger)
-
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -68,57 +93,34 @@ func main() {
 
 		// consume this until library closes it for us, indicating client has shut down
 		for err := range errors {
-			logger.Printf("Kafka message error: %s", err)
+			// nil exiting
+			if err != nil {
+				logger.Printf("Kafka message error: %s", err)
+			}
 		}
 	}()
 
-	avroCodec, err := goavro.NewCodec(`{
-		"namespace": "my.namespace.com",
-		"type":	"record",
-		"name": "indentity",
-		"fields": [
-			{ "name": "FirstName", "type": "string"},
-			{ "name": "LastName", "type": "string"},
-			{ "name": "Errors", "type": ["null", {"type":"array", "items":"string"}], "default": null },
-			{ "name": "Address", "type": ["null",{
-				"namespace": "my.namespace.com",
-				"type":	"record",
-				"name": "address",
-				"fields": [
-					{ "name": "Address1", "type": "string" },
-					{ "name": "Address2", "type": ["null", "string"], "default": null },
-					{ "name": "City", "type": "string" },
-					{ "name": "State", "type": "string" },
-					{ "name": "Zip", "type": "int" }
-				]
-			}],"default":null}
-		]
-	}`)
-	if err != nil {
-		log.Fatal(err)
-	}
-	schemaId, err := producer.GetSchemaId(topic, avroCodec)
-	if err != nil {
-		log.Fatal(err)
+	for i := 0; i < count; i++ {
+		msg := kafka.ProducerMessage{
+			Topic: topic,
+			Key:   []byte(fmt.Sprintf("message_%d", i+1)),
+			Value: []byte("example data"),
+		}
+		logger.Printf("Sending message %d", i+1)
+
+		if err := producer.Send(msg); err != nil {
+			logger.Printf(err.Error()) // only happens if context is cancelled while Send() is blocked on full queue
+			break
+		}
 	}
 
-	// Convert native Go form to binary Avro data
-	binaryValue, err := avroCodec.BinaryFromNative(nil, user.ToStringMap())
-
-	if err != nil {
-		logger.Fatal(err)
-	}
-	binaryMsg := &kafka.AvroEncoder{
-		SchemaID: schemaId,
-		Content:  binaryValue,
-	}
-	msg := &sarama.ProducerMessage{
+	// send poison pill so consumer-example will know to shut down:
+	pill := kafka.ProducerMessage{
 		Topic: topic,
-		Key:   sarama.StringEncoder("key"),
-		Value: binaryMsg,
+		Key:   []byte("poison pill"),
+		Value: []byte{},
 	}
-
-	producer.SendAvroMsg(msg)
+	producer.Send(pill)
 
 	// signal the producer's background client to gracefully shut down
 	cancelable()
@@ -126,56 +128,4 @@ func main() {
 	// wait for the client to shut down after draining outgoing message and error queues
 	wg.Wait()
 	logger.Printf("Run complete, exiting")
-}
-
-// User holds information about a user.
-type User struct {
-	FirstName string
-	LastName  string
-	Errors    []string
-	Address   *Address
-}
-
-// Address holds information about an address.
-type Address struct {
-	Address1 string
-	Address2 string
-	City     string
-	State    string
-	Zip      int
-}
-
-// ToStringMap returns a map representation of the User.
-func (u *User) ToStringMap() map[string]interface{} {
-	datumIn := map[string]interface{}{
-		"FirstName": string(u.FirstName),
-		"LastName":  string(u.LastName),
-	}
-
-	if len(u.Errors) > 0 {
-		datumIn["Errors"] = goavro.Union("array", u.Errors)
-	} else {
-		datumIn["Errors"] = goavro.Union("null", nil)
-	}
-
-	if u.Address != nil {
-		addDatum := map[string]interface{}{
-			"Address1": string(u.Address.Address1),
-			"City":     string(u.Address.City),
-			"State":    string(u.Address.State),
-			"Zip":      int(u.Address.Zip),
-		}
-		if u.Address.Address2 != "" {
-			addDatum["Address2"] = goavro.Union("string", u.Address.Address2)
-		} else {
-			addDatum["Address2"] = goavro.Union("null", nil)
-		}
-
-		//important need namespace and record name
-		datumIn["Address"] = goavro.Union("my.namespace.com.address", addDatum)
-
-	} else {
-		datumIn["Address"] = goavro.Union("null", nil)
-	}
-	return datumIn
 }
