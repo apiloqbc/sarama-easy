@@ -1,4 +1,4 @@
-FROM golang:1.13.4
+FROM golang:1.22.0
 
 WORKDIR /go/src/github.com/apiloqbc/sarama-easy
 
