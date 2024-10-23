@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/IBM/sarama"
+	"github.com/Shopify/sarama"
 	"github.com/linkedin/goavro/v2"
 	"github.com/pkg/errors"
 )
@@ -188,7 +188,7 @@ func (ac *kafkaConsumer) ProcessAvroMsg(m *ConsumerMessage) (*Message, error) {
 	return &msg, nil
 }
 
-//GetSchemaId get schema id from schema-registry service
+// GetSchemaId get schema id from schema-registry service
 func (ac *kafkaConsumer) GetSchema(id int) (*goavro.Codec, error) {
 	codec, err := ac.SchemaRegistryClient.GetSchema(id)
 	if err != nil {
